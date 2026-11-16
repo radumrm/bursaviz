@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.DS_Store
+
+# Personal reference screenshots (show browser tabs and an account name) — never publish
+Screenshot*.png
+
+# graphify working files; the report and graph themselves are kept
+graphify-out/cache/
+graphify-out/.graphify_*

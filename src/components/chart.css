@@ -1,0 +1,78 @@
+/* Chart-only styles (indicator menu, pane-driven height). Uses the variables from src/styles.css. */
+
+/* Price pane 500 px + 120 px per sub-pane (RSI, MACD). Two classes so it beats `.chart-box` in styles.css. */
+.chart-panel .chart-box {
+  height: calc(500px + var(--sub-panes, 1) * 120px);
+}
+@media (max-width: 860px) {
+  .chart-panel .chart-box {
+    height: calc(380px + var(--sub-panes, 1) * 120px);
+  }
+}
+
+.ind-menu {
+  position: relative;
+}
+.ind-caret {
+  font-size: 10px;
+  margin-left: 3px;
+  opacity: 0.8;
+}
+.ind-pop {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 230px;
+  padding: 8px 10px 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow, 0 8px 24px rgba(0, 0, 0, 0.35));
+  color: var(--text);
+  font-size: 13.5px;
+}
+.ind-group {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.ind-group + .ind-group {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-soft);
+}
+.ind-group legend {
+  padding: 0 0 4px;
+  color: var(--dim);
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ind-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 2px;
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ind-item:hover {
+  background: var(--bg);
+}
+.ind-item.off {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ind-item input {
+  margin: 0;
+  accent-color: var(--blue);
+}
+.ind-swatch {
+  width: 12px;
+  height: 3px;
+  border-radius: 2px;
+  flex: none;
+}

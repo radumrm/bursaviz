@@ -76,3 +76,21 @@
   border-radius: 2px;
   flex: none;
 }
+
+/* Phones: the toolbar is laid out in styles.css; the indicator popover must stay inside the screen. */
+@media (max-width: 760px) {
+  .chart-panel .chart-box {
+    height: calc(360px + var(--sub-panes, 1) * 110px);
+  }
+  .ind-pop {
+    left: auto;
+    right: 0;
+    width: 240px;
+    max-width: calc(100vw - 36px);
+    font-size: 14px;
+  }
+  .ind-item {
+    min-height: 36px;
+    padding: 6px 2px;
+  }
+}

@@ -1428,3 +1428,391 @@ button:disabled {
     border-top: 1px solid var(--line-soft);
   }
 }
+
+/* ---------- phones (layout and touch targets; desktop above 760px is untouched) ---------- */
+
+@media (max-width: 760px) {
+  html {
+    scroll-padding-top: 8px;
+  }
+  .wrap {
+    padding: 0 10px;
+  }
+  .stack {
+    gap: 14px;
+    padding-top: 12px;
+  }
+
+  /* header: logo + controls on the first row, search on its own row */
+  .site-head .wrap {
+    flex-wrap: wrap;
+    height: auto;
+    gap: 8px 10px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .logo {
+    font-size: 26px;
+  }
+  .head-ctl {
+    order: 2;
+    gap: 8px;
+  }
+  .search {
+    order: 3;
+    flex: 1 0 100%;
+  }
+  .search input {
+    height: 40px;
+    font-size: 16px;
+  }
+  .head-ctl .seg button {
+    min-height: 40px;
+    min-width: 44px;
+    padding: 0 8px;
+    font-size: 13px;
+  }
+  .theme-btn {
+    width: 44px;
+    height: 42px;
+  }
+  .hits li {
+    grid-template-columns: 56px minmax(0, 1fr) auto 64px;
+    gap: 8px;
+    padding: 10px 8px;
+  }
+
+  /* ticker block: not sticky, compact */
+  .tk-head {
+    position: static;
+  }
+  .tk-top {
+    gap: 10px;
+    padding-top: 10px;
+  }
+  .tk-id {
+    gap: 8px;
+  }
+  .tile {
+    width: 32px;
+    height: 32px;
+    font-size: 13px;
+  }
+  .tk-id h1 {
+    font-size: 26px;
+  }
+  .tk-quote {
+    gap: 8px;
+  }
+  .tk-quote strong {
+    font-size: 26px;
+  }
+  .tk-quote small {
+    font-size: 11px;
+  }
+  .tk-quote span {
+    font-size: 15px;
+  }
+  .tk-bar {
+    margin-top: 6px;
+  }
+  .tags {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin: 0 0 6px;
+    scrollbar-width: none;
+  }
+  .tags::-webkit-scrollbar,
+  .tk-bar nav::-webkit-scrollbar {
+    display: none;
+  }
+  .tags li {
+    flex: none;
+    font-size: 12px;
+  }
+  .tk-bar nav {
+    gap: 0;
+    scrollbar-width: none;
+    margin: 0 -10px;
+    padding: 0 10px;
+  }
+  .tk-bar nav button {
+    flex: none;
+    min-height: 44px;
+    padding: 0 12px;
+    font-size: 15px;
+  }
+
+  /* chart toolbar: type + indicators on row 1, the seven intervals across row 2 */
+  .chart-toolbar {
+    gap: 8px;
+    padding: 8px;
+  }
+  .chart-toolbar .seg:first-child,
+  .chart-toolbar > .seg {
+    order: 1;
+  }
+  .ind-menu {
+    order: 2;
+    margin-left: auto;
+  }
+  .tfs {
+    order: 3;
+    flex: 1 0 100%;
+    gap: 2px;
+  }
+  .tfs button {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 40px;
+    padding: 0 2px;
+    font-size: 14px;
+  }
+  .chart-toolbar .seg button {
+    min-height: 40px;
+    padding: 0 12px;
+    font-size: 14px;
+  }
+  .chart-legend {
+    left: 8px;
+    right: 62px;
+    top: 4px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 10px;
+    font-size: 11.5px;
+    line-height: 1.4;
+  }
+  .chart-legend .ohlc {
+    flex: 1 0 100%;
+    gap: 0 8px;
+  }
+  .rsi-label {
+    font-size: 11.5px;
+    gap: 8px;
+  }
+
+  /* snapshot */
+  .snap-row {
+    height: 30px;
+  }
+  .peers {
+    font-size: 14px;
+    gap: 6px 12px;
+  }
+  .peers a {
+    padding: 4px 0;
+  }
+
+  /* bar charts: keep the SVG text at ~11px after the viewBox is scaled down */
+  .minibars {
+    padding: 10px 10px 6px;
+  }
+  .minibar .tick,
+  .minibar .val {
+    font-size: 14px;
+  }
+  .minibar figcaption {
+    font-size: 13px;
+  }
+
+  /* news */
+  .news {
+    padding: 4px 2px;
+  }
+  .news li {
+    padding: 8px;
+    font-size: 14px;
+  }
+
+  /* revenue flow: scrolls sideways inside the panel, text kept at about 11px */
+  .sankey-scroll {
+    padding: 4px 10px 12px;
+  }
+  .sankey svg {
+    min-width: 1000px;
+  }
+
+  /* statements */
+  .statements .panel-head {
+    padding: 10px;
+  }
+  .st-tabs button {
+    min-height: 40px;
+    padding: 0 10px;
+    font-size: 14px;
+  }
+  .statements .fy {
+    flex-wrap: wrap;
+  }
+  .statements .seg button {
+    min-height: 40px;
+    padding: 0 12px;
+  }
+  .statements table {
+    font-size: 13px;
+  }
+  .statements th,
+  .statements td {
+    padding: 6px 10px;
+  }
+  .statements th:first-child {
+    width: auto;
+    min-width: 128px;
+    max-width: 128px;
+    white-space: normal;
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--bg);
+    line-height: 1.25;
+    box-shadow: 1px 0 0 var(--line-soft);
+  }
+  .statements thead th:first-child {
+    background: var(--bg-deep);
+    z-index: 2;
+  }
+  .statements thead .sub th:first-child {
+    background: var(--bg);
+  }
+  .statements tbody tr:nth-child(odd) th:first-child {
+    background: var(--bg-deep);
+  }
+  .statements tbody tr:hover th:first-child {
+    background: var(--row-hover);
+  }
+  .units {
+    font-size: 12px;
+  }
+
+  /* company */
+  .about p {
+    font-size: 14px;
+  }
+  .ext-links a {
+    padding: 8px 0;
+  }
+
+  /* home: movers one per row (the 1240px rule further up wins the cascade otherwise) */
+  .movers-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+  .movers h2 {
+    padding: 9px 10px;
+  }
+  .movers td {
+    padding: 0 10px;
+    height: 40px;
+    font-size: 14px;
+  }
+  .movers td.vol {
+    display: none;
+  }
+  .sec-head h1 {
+    font-size: 18px;
+  }
+
+  /* sector groups: name and value on one line, the bar underneath */
+  .groups-head {
+    padding: 8px 10px;
+  }
+  .groups-head .seg button {
+    min-height: 40px;
+    padding: 0 10px;
+    font-size: 13px;
+  }
+  .groups li button {
+    grid-template-columns: minmax(0, 1fr) 64px 24px;
+    grid-template-areas: "name val n" "track track track";
+    row-gap: 3px;
+    padding: 7px 10px 8px;
+    min-height: 44px;
+  }
+  .groups li button .g-name {
+    grid-area: name;
+  }
+  .groups li button .g-track {
+    grid-area: track;
+    height: 8px;
+  }
+  .groups li button .g-val {
+    grid-area: val;
+  }
+  .groups li button .g-n {
+    grid-area: n;
+    font-size: 12px;
+  }
+
+  /* screener filters: two per row, full-size touch targets */
+  .filters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .filters select,
+  .filters .reset {
+    width: 100%;
+    height: 42px;
+    font-size: 14px;
+  }
+  .filters .seg {
+    width: 100%;
+  }
+  .filters .seg button {
+    flex: 1;
+    min-height: 40px;
+  }
+  .filters > select:first-child {
+    grid-column: 1 / -1;
+  }
+
+  /* screener table: scrolls inside its panel, ticker column stays */
+  .screener td,
+  .screener th {
+    padding: 0 10px;
+    height: 42px;
+    font-size: 13.5px;
+  }
+  .screener th button {
+    min-height: 42px;
+  }
+  .screener th:first-child,
+  .screener td:first-child {
+    display: none;
+  }
+  .screener th:nth-child(2),
+  .screener td:nth-child(2) {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--bg);
+    box-shadow: 1px 0 0 var(--line-soft);
+  }
+  .screener thead th:nth-child(2) {
+    background: var(--bg-deep);
+    z-index: 2;
+  }
+  .screener tbody tr:nth-child(even) td:nth-child(2) {
+    background: var(--bg-deep);
+  }
+  .screener tbody tr:hover td:nth-child(2) {
+    background: var(--row-hover);
+  }
+  .co {
+    max-width: 180px;
+  }
+}
+
+@media (max-width: 520px) {
+  .logo em {
+    display: none;
+  }
+}
+
+/* The 1240px movers rule above comes later in the file than the 860px one and re-created two columns on tablets. */
+@media (max-width: 860px) {
+  .movers-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

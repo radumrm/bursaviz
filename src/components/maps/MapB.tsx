@@ -41,13 +41,40 @@ interface Fit {
   lines: number;
   font: number;
   strip: number;
+  /** Shortened name, only when the full one cannot be wrapped into a narrow block. */
+  text?: string;
 }
 
+const SHORT: Record<string, string> = {
+  "Communication Services": "Comm.",
+  "Consumer Defensive": "Cons. Def.",
+  "Consumer Cyclical": "Cons. Cycl.",
+  "Basic Materials": "Materials",
+  "Financial Services": "Financial",
+  Healthcare: "Health",
+  Technology: "Tech",
+  "Real Estate": "R. Estate",
+};
+/** For blocks too narrow even for SHORT. The full name is in the button's tooltip. */
+const TINY: Record<string, string> = {
+  "Communication Services": "Com",
+  "Consumer Defensive": "CD",
+  "Consumer Cyclical": "CC",
+  "Basic Materials": "Mat",
+  "Financial Services": "Fin",
+  Healthcare: "HC",
+  Technology: "Tec",
+  "Real Estate": "RE",
+  Industrials: "Ind",
+  Utilities: "Utl",
+  Energy: "Eng",
+};
+
 /** How a sector name wraps in a block of width w: never cut, the strip grows with the lines needed. */
-function labelFit(name: string, w: number): Fit {
+function labelFit(name: string, w: number, phone = false): Fit {
   const words = name.split(" ");
   const avail = Math.max(20, w - 8);
-  for (const font of [10, 9.5, 9]) {
+  for (const font of phone ? [11, 10.5, 10] : [10, 9.5, 9]) {
     const cw = font * 0.74;
     if (Math.max(...words.map((x) => x.length)) * cw > avail) continue;
     let lines = 1;
@@ -61,13 +88,21 @@ function labelFit(name: string, w: number): Fit {
     }
     return { lines, font, strip: Math.round(lines * font * 1.25 + 6) };
   }
-  // Last resort: a single word wider than the block breaks inside the word.
+  // Last resort on phones: a shortened name; otherwise a single word wider than the block breaks inside the word.
+  if (phone && SHORT[name]) {
+    const short = labelFit(SHORT[name], w, false);
+    if (short.lines <= 2 && short.font >= 9.5) return { ...short, text: SHORT[name] };
+  }
+  if (phone && TINY[name]) {
+    const tiny = labelFit(TINY[name], w, false);
+    if (tiny.lines === 1 && tiny.font >= 9.5) return { ...tiny, text: TINY[name] };
+  }
   const font = 9;
   const lines = Math.ceil((name.replace(/ /g, "").length * font * 0.74) / avail) + words.length - 1;
   return { lines, font, strip: Math.round(lines * font * 1.25 + 6) };
 }
 
-function layout(list: IndexRow[], w: number, h: number, flat = false): Laid {
+function layout(list: IndexRow[], w: number, h: number, flat = false, phone = false): Laid {
   if (!w || !h || !list.length) return { sectors: [], leaves: [], density: 0, fits: new Map() };
   const bySector = new Map<string, IndexRow[]>();
   for (const r of list) bySector.set(r.sector, [...(bySector.get(r.sector) ?? []), r]);
@@ -92,8 +127,8 @@ function layout(list: IndexRow[], w: number, h: number, flat = false): Laid {
       .paddingTop((n) => (flat || n.depth !== 1 ? 2 : (f.get(n.data.name)?.strip ?? SECTOR_LABEL)))
       .round(true)(root);
     const next = new Map<string, Fit>();
-    for (const sec of laid.children ?? []) next.set(sec.data.name, labelFit(sec.data.name, sec.x1 - sec.x0));
-    const same = [...next].every(([k, v]) => f.get(k)?.strip === v.strip && f.get(k)?.font === v.font);
+    for (const sec of laid.children ?? []) next.set(sec.data.name, labelFit(sec.data.name, sec.x1 - sec.x0, phone));
+    const same = [...next].every(([k, v]) => f.get(k)?.strip === v.strip && f.get(k)?.font === v.font && f.get(k)?.text === v.text);
     fits = next;
     if (same) break;
   }
@@ -158,8 +193,8 @@ export function MapB({ rows }: { rows: IndexRow[] }) {
   const restW = narrow ? width : width - GAP - mainW;
   const mapH = narrow ? Math.round(Math.max(300, Math.min(520, width * 0.8))) : wideTotal - HEADER - NOCAP_H - GAP;
 
-  const A = useMemo(() => layout(split.main, mainW, mapH), [split.main, mainW, mapH]);
-  const B = useMemo(() => layout(split.rest, restW, mapH), [split.rest, restW, mapH]);
+  const A = useMemo(() => layout(split.main, mainW, mapH, false, narrow), [split.main, mainW, mapH, narrow]);
+  const B = useMemo(() => layout(split.rest, restW, mapH, false, narrow), [split.rest, restW, mapH, narrow]);
   const zoomRows = useMemo(() => (zoom ? rows.filter((r) => r.sector === zoom && r.marketCap) : []), [rows, zoom]);
   const zoomNoCap = useMemo(
     () => (zoom ? split.noCap.filter((r) => r.sector === zoom) : []),
@@ -208,7 +243,7 @@ export function MapB({ rows }: { rows: IndexRow[] }) {
             title={`Mărește sectorul ${s.data.name} · ${s.children?.length ?? 0} acțiuni`}
             style={{ fontSize: L.fits.get(s.data.name)?.font ?? 10, minHeight: L.fits.get(s.data.name)?.strip }}
           >
-            {s.data.name}
+            {L.fits.get(s.data.name)?.text ?? s.data.name}
           </button>
         </div>
       ))}
@@ -319,5 +354,12 @@ const CSS = `
 .mb-chip { display: flex; flex-direction: column; align-items: center; padding: 3px 4px; color: #fff; font-size: 12px; line-height: 1.15; border-radius: 3px; }
 .mb-chip:hover { text-decoration: none; outline: 2px solid #fff; outline-offset: -2px; }
 .mb-chip span { font-size: 10px; font-weight: 700; }
-@media (max-width: 820px) { .mb-nocap { flex-direction: column; align-items: stretch; } }
+@media (max-width: 820px) {
+  .mb-nocap { flex-direction: column; align-items: stretch; }
+  .mb-chips { grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); }
+  .mb-chip { min-height: 40px; justify-content: center; }
+  .mb-chip span { font-size: 11px; }
+  .mb-back { min-height: 40px; padding: 3px 12px; }
+  .mb-scale { font-size: 11px; }
+}
 `;

@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fmtDate, fmtPrice, fmtSignedPct, signClass } from "../lib/format";
-import { go, stockHref } from "../lib/router";
+import { go, stockHref, useRoute } from "../lib/router";
 import { CURRENCIES, useSettings } from "../lib/settings";
 import type { IndexFile } from "../lib/types";
 
@@ -12,6 +12,26 @@ export function Header({ index }: { index: IndexFile | null }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const route = useRoute();
+  const nav = (page: string, href: string, label: string) => (
+    <a href={href} className={route.page === page ? "on" : undefined} aria-current={route.page === page ? "page" : undefined}>
+      {label}
+    </a>
+  );
+
+  // "/" jumps to the search box, as on most finance sites — unless the user is already typing somewhere.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
+      if (e.key === "/" && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
 
   const hits = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -57,7 +77,7 @@ export function Header({ index }: { index: IndexFile | null }) {
           <input
             ref={inputRef}
             value={q}
-            placeholder="Caută simbol sau companie"
+            placeholder="Caută simbol sau companie  ( / )"
             aria-label="Caută simbol sau companie"
             onChange={(e) => {
               setQ(e.target.value);
@@ -94,7 +114,12 @@ export function Header({ index }: { index: IndexFile | null }) {
         </div>
 
         <nav className="site-nav">
-          <a href="#/">Piață</a>
+          {nav("home", "#/", "Piață")}
+          {nav("watchlist", "#/watchlist", "Favorite")}
+          {nav("portfolio", "#/portfolio", "Portofoliu")}
+          {nav("compare", "#/compare", "Compară")}
+          {nav("calendar", "#/calendar", "Calendar")}
+          {nav("news", "#/news", "Știri")}
         </nav>
         <div className="head-ctl">
           <div className="seg" role="group" aria-label="Moneda de afișare" title={fxReady ? undefined : NO_FX}>

@@ -15,6 +15,7 @@ import type { TickerDef } from "./tickers.ts";
 import { repairDaily } from "./lib/bars.ts";
 import { PUBLICATIONS } from "./lib/publications.ts";
 import { dedupeNews, isMarketRelevant, isRelevant, normalizeTitle, parseRss, tagTickers } from "./lib/news.ts";
+import { buildCalendar, buildNewsAll } from "./lib/derived.ts";
 import { technicals, techRating } from "../src/lib/indicators.ts";
 import type {
   BarsFile, DailyBar, FxFile, IndexFile, IndexRow, IntraBar, MarketNewsFile, NewsItem, Period, Snapshot, StockFile,
@@ -610,6 +611,47 @@ async function writeMarketNews() {
   console.log(`Market news: ${items.length} items, ${direct} from direct feeds`);
 }
 
+/**
+ * Offline: rebuild calendar.json and news-all.json from the stock files and market-news.json on disk.
+ * `updatedAt` is the age of the data they were built from (index.json / market-news.json), not of this run.
+ */
+async function writeDerived() {
+  const dir = path.join(OUT, "stocks");
+  const files = (await readdir(dir)).filter((f) => f.endsWith(".json")).sort();
+  const stocks: StockFile[] = [];
+  for (const f of files) {
+    const stock = await readJson<StockFile>(path.join(dir, f));
+    if (stock?.ticker && stock.snapshot) stocks.push(stock);
+  }
+  if (!stocks.length) {
+    console.log("Derived files: no stock files on disk, nothing written");
+    return;
+  }
+  const now = new Date();
+  const today = dateFmt.format(now);
+  const indexStamp = (await readJson<IndexFile>(path.join(OUT, "index.json")))?.updatedAt ?? now.toISOString();
+  const market = await readJson<MarketNewsFile>(path.join(OUT, "market-news.json"));
+
+  const calendar = { ...buildCalendar(stocks, now), updatedAt: indexStamp };
+  await writeFile(path.join(OUT, "calendar.json"), JSON.stringify(calendar));
+  const div = calendar.events.filter((e) => e.type === "dividend");
+  const earn = calendar.events.filter((e) => e.type === "earnings");
+  const future = (list: typeof div) => list.filter((e) => e.date >= today).length;
+  console.log(
+    `calendar.json: ${calendar.events.length} events — ${div.length} dividends (${future(div)} upcoming, ` +
+      `${div.filter((e) => e.amount == null).length} without amount), ${earn.length} earnings (${future(earn)} upcoming), ` +
+      `${new Set(calendar.events.map((e) => e.ticker)).size} tickers`,
+  );
+
+  const newsAll = { ...buildNewsAll(stocks, market?.items ?? [], TICKERS, now), updatedAt: market?.updatedAt ?? indexStamp };
+  await writeFile(path.join(OUT, "news-all.json"), JSON.stringify(newsAll));
+  const tagged = newsAll.items.filter((n) => n.tickers?.length).length;
+  console.log(
+    `news-all.json: ${newsAll.items.length} items (${tagged} tagged with a ticker)` +
+      (newsAll.items.length ? `, ${newsAll.items[newsAll.items.length - 1].date.slice(0, 10)} … ${newsAll.items[0].date.slice(0, 10)}` : ""),
+  );
+}
+
 /** Offline: recompute derived fields from the stocks/ and bars/ files on disk and rebuild index.json. No network. */
 async function reindex() {
   const dir = path.join(OUT, "stocks");
@@ -639,6 +681,7 @@ async function reindex() {
   };
   await writeFile(path.join(OUT, "index.json"), JSON.stringify(out));
   console.log(`Reindexed ${rows.length} stocks (${rated} with a technical rating, ${rows.filter((r) => r.recom != null).length} with analyst coverage). No network calls.`);
+  await writeDerived();
 }
 
 async function main() {
@@ -744,6 +787,7 @@ async function main() {
   await writeFile(indexPath, JSON.stringify(out));
   const meta: MetaFile = { updatedAt: out.updatedAt, tickers: metaTickers, skipped };
   await writeFile(metaPath, JSON.stringify(meta));
+  await writeDerived();
   console.log(`\nDone: ${out.rows.length} tickers in index.json` + (skipped.length ? `, skipped: ${skipped.join(", ")}` : ""));
 }
 

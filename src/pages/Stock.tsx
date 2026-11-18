@@ -2,13 +2,16 @@ import { useEffect } from "react";
 import { MiniBars } from "../components/MiniBars";
 import { News } from "../components/News";
 import { Ratings } from "../components/Ratings";
+import { Dividends } from "../components/Dividends";
+import { PeersTable } from "../components/PeersTable";
 import { PriceChart } from "../components/PriceChart";
+import { Star } from "../components/Star";
 import { Sankey } from "../components/Sankey";
 import { SnapshotTable } from "../components/SnapshotTable";
 import { Statements } from "../components/Statements";
 import { dataUrl, useJson } from "../lib/data";
 import { fmtNum, fmtPct, fmtPrice, fmtSignedPct, signClass } from "../lib/format";
-import { rememberTf, stockHref } from "../lib/router";
+import { compareHref, rememberTf, stockHref } from "../lib/router";
 import { useSettings } from "../lib/settings";
 import type { BarsFile, IndexFile, StockFile } from "../lib/types";
 
@@ -97,6 +100,7 @@ export function Stock({ ticker, tf, index }: { ticker: string; tf: string | null
               <span className="tile" style={{ background: tileColour(s.ticker) }} aria-hidden="true">{s.ticker.slice(0, 2)}</span>
               <h1>{s.ticker}</h1>
               <span className="tk-name">{s.name}</span>
+              <Star ticker={s.ticker} />
             </div>
             <div className="tk-quote">
               <strong>{fmtPrice(price)}</strong>
@@ -129,7 +133,16 @@ export function Stock({ ticker, tf, index }: { ticker: string; tf: string | null
       <div className="wrap stack">
         <div id="chart" className="anchor">
           {bars.data ? (
-            <PriceChart key={s.ticker} bars={bars.data} initialTf={tf} onTf={(next) => rememberTf(s.ticker, next)} />
+            <PriceChart
+              key={s.ticker}
+              bars={bars.data}
+              initialTf={tf}
+              onTf={(next) => rememberTf(s.ticker, next)}
+              events={{
+                dividends: s.dividends,
+                earnings: typeof snap.earningsDate === "string" ? [snap.earningsDate.slice(0, 10)] : [],
+              }}
+            />
           ) : (
             <section className="panel"><div className="empty">{bars.loading ? "Se încarcă graficul…" : "Nu am istoric de preț pentru acest simbol."}</div></section>
           )}
@@ -142,6 +155,7 @@ export function Stock({ ticker, tf, index }: { ticker: string; tf: string | null
               {peers.map((p) => (
                 <a key={p.ticker} href={stockHref(p.ticker)} title={p.name}>{p.ticker}</a>
               ))}
+              <a className="peers-cmp" href={compareHref([s.ticker, ...peers.slice(0, 3).map((p) => p.ticker)])}>Compară →</a>
             </p>
           )}
           <SnapshotTable stock={s} />
@@ -150,6 +164,9 @@ export function Stock({ ticker, tf, index }: { ticker: string; tf: string | null
         <Ratings stock={s} />
 
         <MiniBars annual={annual} currency={s.statementsCurrency ?? s.currency} />
+
+        <Dividends stock={s} />
+        <PeersTable stock={s} index={index} />
 
         <div className="anchor">
           <News news={s.news} daily={bars.data?.d ?? []} />

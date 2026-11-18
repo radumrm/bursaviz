@@ -126,3 +126,49 @@ export interface IndexFile {
   updatedAt: string;
   rows: IndexRow[];
 }
+
+/** public/data/calendar.json — corporate events, past and upcoming, oldest first. */
+export interface CalendarEvent {
+  /** YYYY-MM-DD (Bucharest date) */
+  date: string;
+  type: "dividend" | "earnings";
+  ticker: string;
+  name: string;
+  /** Dividend per share in the trading currency (dividend events only). */
+  amount?: number;
+  /** Dividend yield at the price of the latest snapshot (fraction). */
+  yield?: number;
+}
+export interface CalendarFile {
+  updatedAt: string;
+  events: CalendarEvent[];
+}
+
+/** public/data/indices.json — market indices for the home-page strip. */
+export interface IndexSeries {
+  /** e.g. "BET" */
+  id: string;
+  name: string;
+  /** "official" = the index as published; "computed" = rebuilt by us from its constituents (an approximation). */
+  source: "official" | "computed";
+  last: number;
+  changePct: number | null;
+  perfW: number | null;
+  perfM: number | null;
+  perfYTD: number | null;
+  perfY: number | null;
+  /** Daily closes, oldest first: [YYYY-MM-DD, close] — at least the last 2 years when available. */
+  d: [string, number][];
+}
+export interface IndicesFile {
+  updatedAt: string;
+  indices: IndexSeries[];
+}
+
+/** Marks drawn on the price chart. */
+export interface ChartEvents {
+  /** [ex-date YYYY-MM-DD, amount per share in RON] */
+  dividends?: [string, number][];
+  /** Earnings dates, YYYY-MM-DD */
+  earnings?: string[];
+}

@@ -10,7 +10,7 @@ import { bollinger, ema, macd, rsi, sma, vwap } from "../lib/indicators";
 import { fmtBig, fmtNum } from "../lib/format";
 import { useSettings } from "../lib/settings";
 import type { Theme } from "../lib/settings";
-import type { BarsFile } from "../lib/types";
+import type { BarsFile, ChartEvents } from "../lib/types";
 import "./chart.css";
 
 const TFS: { id: Tf; title: string }[] = [
@@ -147,6 +147,8 @@ interface Props {
   /** Interval requested by the URL, if any. */
   initialTf?: string | null;
   onTf?: (tf: Tf) => void;
+  /** Dividends and earnings dates to mark on the chart. */
+  events?: ChartEvents;
 }
 
 type Series = (number | null)[];

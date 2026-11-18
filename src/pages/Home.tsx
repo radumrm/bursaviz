@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Groups } from "../components/Groups";
+import { IndexStrip } from "../components/IndexStrip";
+import { Star } from "../components/Star";
 import { MarketMap } from "../components/maps";
 import { News } from "../components/News";
 import { dataUrl, useJson } from "../lib/data";
@@ -10,6 +12,28 @@ import { CAPS, DIVS, EMPTY, fromParams, passes, PES, PRESETS, RATINGS, TECH_RATI
 import type { Filters, Sort, SortKey } from "../lib/screener";
 import { useSettings } from "../lib/settings";
 import type { IndexFile, IndexRow, MarketNewsFile } from "../lib/types";
+
+const CSV_FIELDS: (keyof IndexRow)[] = [
+  "ticker", "name", "sector", "industry", "index", "price", "changePct", "marketCap", "pe", "divYield", "volume",
+  "relVol", "perfW", "perfM", "perfYTD", "perfY", "rsi", "techScore", "recom", "target", "sma200", "high52Pct", "low52Pct",
+];
+
+/** The screener's current rows as a CSV file. Raw values: money in RON, percentages as fractions. */
+function downloadCsv(rows: IndexRow[]) {
+  const cell = (v: unknown) => {
+    if (v == null) return "";
+    const t = String(v);
+    return /[",\n;]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+  };
+  const lines = [CSV_FIELDS.join(","), ...rows.map((r) => CSV_FIELDS.map((k) => cell(r[k])).join(","))];
+  // The BOM makes Excel read the diacritics in company names correctly.
+  const url = URL.createObjectURL(new Blob(["\ufeff" + lines.join("\n")], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `bursaviz-screener-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 const COLS: { key: SortKey; label: string; num?: boolean; title?: string }[] = [
   { key: "ticker", label: "Simbol" },
@@ -133,6 +157,7 @@ export function Home({ index, error }: { index: IndexFile | null; error: string 
 
   return (
     <main className="wrap stack home">
+      <IndexStrip />
       <section>
         <header className="sec-head">
           <h1>Harta pieței</h1>
@@ -216,6 +241,9 @@ export function Home({ index, error }: { index: IndexFile | null; error: string 
           <button className="reset" onClick={() => { apply(EMPTY); setSort(DEFAULT_SORT); }} disabled={!active && sort.key === DEFAULT_SORT.key && sort.desc}>
             Resetează
           </button>
+          <button className="reset" onClick={() => downloadCsv(shown)} disabled={!shown.length} title="Descarcă rândurile afișate ca fișier CSV (valori în RON)">
+            Export CSV
+          </button>
         </div>
         <div className="panel screener">
           <table>
@@ -237,7 +265,7 @@ export function Home({ index, error }: { index: IndexFile | null; error: string 
               {shown.map((r, i) => (
                 <tr key={r.ticker} onClick={() => go(stockHref(r.ticker))}>
                   <td className="num dim">{i + 1}</td>
-                  <td><a href={stockHref(r.ticker)} onClick={(e) => e.stopPropagation()}>{r.ticker}</a></td>
+                  <td><Star ticker={r.ticker} small /><a href={stockHref(r.ticker)} onClick={(e) => e.stopPropagation()}>{r.ticker}</a></td>
                   <td className="co" title={r.sector}>{r.name}</td>
                   <td className="num">{fmtBig(r.marketCap == null ? null : convert(r.marketCap))}</td>
                   <td className="num">{fmtNum(r.pe)}</td>

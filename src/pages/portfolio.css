@@ -1,0 +1,316 @@
+.portfolio .sec-head {
+  align-items: flex-start;
+}
+.portfolio .sec-head p {
+  max-width: 760px;
+}
+.pf-cards {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+.pf-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.pf-card span {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.pf-card b {
+  font-size: 21px;
+  color: var(--text-strong);
+}
+.pf-card b.pos {
+  color: var(--green);
+}
+.pf-card b.neg {
+  color: var(--red);
+}
+.pf-card b small {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.pf-card em {
+  font-style: normal;
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+.pf-card em.pos {
+  color: var(--green);
+}
+.pf-card em.neg {
+  color: var(--red);
+}
+
+.pf-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  align-items: flex-end;
+  padding: 12px 14px 14px;
+}
+.pf-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.pf-fields input {
+  height: 34px;
+  min-width: 0;
+  width: 150px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0 8px;
+  color: var(--text);
+}
+.pf-fields .seg {
+  height: 34px;
+}
+.pf-fields .seg button {
+  padding: 0 12px;
+}
+.pf-submit {
+  display: flex;
+  gap: 8px;
+}
+.pf-portfolio button,
+.portfolio button.primary,
+.pf-submit button,
+.pf-data-body button,
+.pf-confirm button,
+.pf-table .act button {
+  height: 34px;
+  padding: 0 14px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-weight: 700;
+}
+.portfolio button.primary {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+.pf-data-body button:hover:not(:disabled),
+.pf-submit button:hover {
+  border-color: var(--blue);
+}
+.portfolio button.danger {
+  color: var(--red);
+  border-color: var(--red);
+}
+.pf-errors {
+  margin: 0;
+  padding: 0 14px 12px 32px;
+  color: var(--red);
+  font-size: 13.5px;
+}
+.pf-msg {
+  padding: 9px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--bg);
+}
+.pf-msg.ok {
+  border-color: var(--green);
+}
+.pf-msg.bad {
+  border-color: var(--red);
+  color: var(--red);
+}
+.pf-warn {
+  padding: 8px 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.pf-empty-h {
+  color: var(--text);
+  font-size: 17px;
+  margin-bottom: 6px;
+}
+
+.pf-table .scroll {
+  overflow-x: auto;
+}
+.pf-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.pf-table th,
+.pf-table td {
+  padding: 5px 12px;
+  white-space: nowrap;
+  text-align: left;
+  border-bottom: 1px solid var(--line-soft);
+}
+.pf-table thead th {
+  background: var(--bg-deep);
+  color: var(--text-soft);
+  font-weight: 700;
+}
+.pf-table tbody tr:nth-child(even) {
+  background: var(--bg-deep);
+}
+.pf-table tbody tr:hover {
+  background: var(--row-hover);
+}
+.pf-table tbody tr.editing {
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+.pf-table tfoot td {
+  font-weight: 700;
+  background: var(--bg-deep);
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+}
+.pf-table td:first-child {
+  font-weight: 700;
+}
+.pf-table .act {
+  text-align: right;
+}
+.pf-table .act button {
+  height: 28px;
+  padding: 0 10px;
+  margin-left: 6px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.pf-table .act button:hover {
+  color: var(--text);
+}
+.pf-table .act button.rm:hover {
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.pf-donuts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  padding: 14px;
+}
+.pf-donut h3 {
+  font-size: 14px;
+  color: var(--text-soft);
+  margin-bottom: 8px;
+}
+.pf-donut-body {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.pf-donut svg {
+  width: 170px;
+  height: 170px;
+  flex: none;
+}
+.pf-donut ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  flex: 1;
+  max-width: 300px;
+}
+.pf-donut li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+}
+.pf-donut li i {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: none;
+}
+.pf-donut li span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pf-data-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 14px;
+}
+.pf-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px 14px;
+  border-top: 1px solid var(--line-soft);
+}
+.pf-confirm span {
+  flex: 1 1 320px;
+}
+
+@media (max-width: 1100px) {
+  .pf-cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 760px) {
+  .pf-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pf-donuts {
+    grid-template-columns: 1fr;
+  }
+  .pf-fields > label,
+  .pf-fields input {
+    width: 100%;
+  }
+  .pf-fields > label {
+    flex: 1 1 calc(50% - 6px);
+  }
+  .pf-fields input,
+  .pf-fields .seg,
+  .pf-submit button,
+  .pf-data-body button,
+  .pf-confirm button {
+    height: 40px;
+  }
+  .pf-table .act button {
+    height: 40px;
+  }
+  .pf-submit {
+    flex: 1 1 100%;
+  }
+  .pf-submit button {
+    flex: 1;
+  }
+  .pf-fields .seg {
+    flex: 1 1 100%;
+  }
+  .pf-fields .seg button {
+    flex: 1;
+  }
+}
+@media (max-width: 460px) {
+  .pf-donut-body {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .pf-donut svg {
+    align-self: center;
+  }
+}

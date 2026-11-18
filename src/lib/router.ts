@@ -1,10 +1,28 @@
 import { useSyncExternalStore } from "react";
 
-export type Route = { page: "home" } | { page: "stock"; ticker: string; tf: string | null };
+export type PageId = "watchlist" | "portfolio" | "compare" | "calendar" | "news";
+export type Route =
+  | { page: "home" }
+  | { page: "stock"; ticker: string; tf: string | null }
+  | { page: PageId };
+
+const PAGES: PageId[] = ["watchlist", "portfolio", "compare", "calendar", "news"];
 
 function parse(hash: string): Route {
   const m = /^#\/stock\/([A-Za-z0-9]+)(?:\?tf=([A-Za-z0-9]+))?/.exec(hash);
-  return m ? { page: "stock", ticker: m[1].toUpperCase(), tf: m[2]?.toUpperCase() ?? null } : { page: "home" };
+  if (m) return { page: "stock", ticker: m[1].toUpperCase(), tf: m[2]?.toUpperCase() ?? null };
+  const p = /^#\/([a-z]+)/.exec(hash)?.[1] as PageId | undefined;
+  return p && PAGES.includes(p) ? { page: p } : { page: "home" };
+}
+
+export const pageHref = (page: PageId) => `#/${page}`;
+/** `#/compare?t=TLV,SNP` */
+export const compareHref = (tickers: string[]) => `#/compare?t=${tickers.join(",")}`;
+
+/** Replace the query of a sub-page's hash (e.g. the compare list) without adding a history entry. */
+export function writePageQuery(page: PageId, params: URLSearchParams) {
+  const q = params.toString();
+  window.history.replaceState(null, "", `#/${page}${q ? `?${q}` : ""}`);
 }
 
 /** Remember the chosen chart interval in the URL (shareable) without adding a history entry. */

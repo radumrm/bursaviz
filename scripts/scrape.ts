@@ -5,6 +5,16 @@
 //   npm run scrape -- TLV H2O   # only these tickers (the home-page index is merged, not replaced)
 //   npm run scrape -- --news-only        # rewrite only news (stocks + market-news.json), no Yahoo calls
 //   npm run scrape -- --fresh 6          # skip tickers whose stock file is younger than 6 hours
+//   npm run scrape -- --indices-only     # only indices.json (5 Yahoo calls for the official BVB indices)
+//   npm run scrape -- --reindex          # offline: rebuild index.json, indices (computed), calendar, news-all
+//
+// Exit codes (the scheduled GitHub workflow commits data only after 0):
+//   0  healthy run
+//   1  bad command line (unknown flag or ticker)
+//   2  Yahoo rate-limited us (HTTP 429) — whatever was fetched before is written, nothing is retried
+//   3  FX rates could not be fetched (fx.json left as it was)
+//   4  fewer than 80% of the tickers attempted were refreshed (failed ones keep their previous files)
+//   5  unexpected crash
 
 import YahooFinance from "yahoo-finance2";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
@@ -14,11 +24,16 @@ import { TICKERS } from "./tickers.ts";
 import type { TickerDef } from "./tickers.ts";
 import { repairDaily } from "./lib/bars.ts";
 import { PUBLICATIONS } from "./lib/publications.ts";
-import { dedupeNews, isMarketRelevant, isRelevant, normalizeTitle, parseRss, tagTickers } from "./lib/news.ts";
+import { cleanSource, dedupeNews, isMarketRelevant, isRelevant, normalizeTitle, parseRss, tagTickers } from "./lib/news.ts";
 import { buildCalendar, buildNewsAll } from "./lib/derived.ts";
+import { divCagr, dividendFields } from "./lib/dividends.ts";
+import { EXIT, keepPrevious as keep, runExit } from "./lib/health.ts";
+import { capWeightedIndex, dailyFromHourly, mergeCloses, perf } from "./lib/indices.ts";
+import type { Close } from "./lib/indices.ts";
 import { technicals, techRating } from "../src/lib/indicators.ts";
 import type {
-  BarsFile, DailyBar, FxFile, IndexFile, IndexRow, IntraBar, MarketNewsFile, NewsItem, Period, Snapshot, StockFile,
+  BarsFile, DailyBar, FxFile, IndexFile, IndexRow, IndexSeries, IndicesFile, IntraBar, MarketNewsFile, NewsItem, Period,
+  Snapshot, StockFile,
 } from "../src/lib/types.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -190,7 +205,13 @@ async function fetchPublications(): Promise<void> {
     const pub = PUBLICATIONS[i];
     if (i) await sleep(150);
     try {
-      const res = await fetch(pub.url, { headers: NEWS_HEADERS, redirect: "follow", signal: AbortSignal.timeout(15000) });
+      const get = () => fetch(pub.url, { headers: NEWS_HEADERS, redirect: "follow", signal: AbortSignal.timeout(15000) });
+      let res = await get();
+      // A publication (never Yahoo) that is busy gets one polite second try.
+      if (res.status === 429 || res.status === 503) {
+        await sleep(5000);
+        res = await get();
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const items = parseRss(await res.text(), { source: pub.name, fallbackDate: new Date().toISOString() });
       console.log(`  ${items.length ? "✓" : "·"} ${pub.name.padEnd(22)} ${String(items.length).padStart(3)} items  ${pub.url}`);
@@ -278,14 +299,12 @@ function toDividends(events: unknown): [string, number][] {
   return [...out.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
 }
 
-/** CAGR of dividends summed per calendar year: last completed year vs `years` earlier. Null unless both sums > 0. */
-function divCagr(divs: [string, number][], years: number): number | null {
-  const sums = new Map<number, number>();
-  for (const [day, amt] of divs) sums.set(Number(day.slice(0, 4)), (sums.get(Number(day.slice(0, 4))) ?? 0) + amt);
-  const last = new Date().getFullYear() - 1;
-  const a = sums.get(last) ?? 0;
-  const b = sums.get(last - years) ?? 0;
-  return a > 0 && b > 0 ? Math.pow(a / b, 1 / years) - 1 : null;
+/** Snapshot dividend fields recomputed from the trading-currency history (see dividendFields). */
+function applyDividendFields(sn: Snapshot, divs: [string, number][] | undefined, asOf: string): void {
+  const n = (k: string) => num(sn[k]);
+  Object.assign(sn, dividendFields(divs, asOf, n("price"), {
+    divTTM: n("divTTM"), divTTMYield: n("divTTMYield"), divEst: n("divEst"), divEstYield: n("divEstYield"),
+  }));
 }
 
 // ---------- home-page index row ----------
@@ -336,8 +355,10 @@ async function scrapeTicker(def: TickerDef): Promise<TickerResult> {
   const quarterHourFrom = new Date(Date.now() - 59 * 864e5);
   const rl: RateCounter = { hits: 0 };
 
-  const previousNews: NewsItem[] =
-    (await readJson<StockFile>(path.join(OUT, "stocks", `${def.t}.json`)))?.news ?? [];
+  const prev = await readJson<StockFile>(path.join(OUT, "stocks", `${def.t}.json`));
+  const prevBars = await readJson<BarsFile>(path.join(OUT, "bars", `${def.t}.json`));
+  const previousNews: NewsItem[] = prev?.news ?? [];
+  const kept: string[] = [];
 
   const [daily, hourly, quarterHour, qs, annualRaw, quarterlyRaw, trailingRaw, news] = await Promise.all([
     soft("daily", () => yf.chart(sym, { period1: "2006-01-01", interval: "1d" }, LOOSE), rl),
@@ -359,11 +380,15 @@ async function scrapeTicker(def: TickerDef): Promise<TickerResult> {
 
   const rateLimited = rl.hits > 0;
   let d = toDaily(((daily as any)?.quotes ?? []) as YQuote[]);
-  if (d.length < 2) return { row: null, rateLimited }; // Yahoo does not carry this ticker
-  const h = toIntra(((hourly as any)?.quotes ?? []) as YQuote[]);
+  // Core calls: without the daily chart or the summary the snapshot would be mostly empty — keep the previous files.
+  if (d.length < 2 || !qs) {
+    console.log(`  ✗ ${def.t.padEnd(8)} ${d.length < 2 ? "no daily bars" : "no quote summary"} — previous files kept`);
+    return { row: null, rateLimited };
+  }
+  const h = keep(toIntra(((hourly as any)?.quotes ?? []) as YQuote[]), prevBars?.h, "1h", kept);
   d = repairDaily(d, h).bars;
-  const m = toIntra(((quarterHour as any)?.quotes ?? []) as YQuote[]);
-  const dividends = toDividends((daily as any)?.events?.dividends);
+  const m = keep(toIntra(((quarterHour as any)?.quotes ?? []) as YQuote[]), prevBars?.m, "15m", kept);
+  const dividends = keep(toDividends((daily as any)?.events?.dividends), prev?.dividends, "dividends", kept);
 
   const q: any = qs ?? {};
   const price_ = q.price ?? {};
@@ -390,8 +415,10 @@ async function scrapeTicker(def: TickerDef): Promise<TickerResult> {
       .filter((o: any) => o.m && num(o.x.revenue) != null)
       .map((o: any) => ({ date: `${o.m[2]}-${ends[Number(o.m[1]) - 1]}`, v: { totalRevenue: o.x.revenue, netIncome: o.x.earnings } }));
   }
+  annual = keep(annual, prev?.statements?.annual, "annual", kept);
+  quarterly = keep(quarterly, prev?.statements?.quarterly, "quarterly", kept);
   const trailing = toPeriods(trailingRaw);
-  const ttm = trailing.length ? trailing[trailing.length - 1] : null;
+  const ttm = trailing.length ? trailing[trailing.length - 1] : (prev?.statements?.ttm ?? null);
   const lastA = annual.length ? annual[annual.length - 1].v : {};
   const lastBS = (quarterly.length ? quarterly[quarterly.length - 1].v : null) ?? lastA;
 
@@ -431,8 +458,8 @@ async function scrapeTicker(def: TickerDef): Promise<TickerResult> {
     divTTM: num(sd.trailingAnnualDividendRate),
     divTTMYield: num(sd.trailingAnnualDividendYield),
     divExDate: iso(sd.exDividendDate),
-    divGr3: divCagr(dividends, 3),
-    divGr5: divCagr(dividends, 5),
+    divGr3: divCagr(dividends, 3, new Date().getFullYear() - 1),
+    divGr5: divCagr(dividends, 5, new Date().getFullYear() - 1),
     payout: num(sd.payoutRatio),
     employees: num(ap.fullTimeEmployees),
     ipo: iso(meta.firstTradeDate) ?? d[0][0],
@@ -508,6 +535,9 @@ async function scrapeTicker(def: TickerDef): Promise<TickerResult> {
     change: prevClose ? price - prevClose : null,
     changePct: prevClose ? price / prevClose - 1 : null,
   };
+  applyDividendFields(snapshot, dividends, dateFmt.format(new Date()));
+  const hasProfile = Boolean(ap.sector || ap.longBusinessSummary);
+  if (!hasProfile && prev) kept.push("profile");
 
   const name = (price_.longName as string) || (price_.shortName as string) || (meta.longName as string) || def.name;
   const currency = (price_.currency as string) || (meta.currency as string) || "RON";
@@ -515,8 +545,8 @@ async function scrapeTicker(def: TickerDef): Promise<TickerResult> {
     ticker: def.t,
     yahoo: sym,
     name,
-    sector: (ap.sector as string) || "Other",
-    industry: (ap.industry as string) || "",
+    sector: (ap.sector as string) || (!hasProfile ? prev?.sector : null) || "Other",
+    industry: (ap.industry as string) || (!hasProfile ? prev?.industry : null) || "",
     index: def.idx ?? null,
     currency,
     statementsCurrency: (fd.financialCurrency as string) || currency,
@@ -525,7 +555,7 @@ async function scrapeTicker(def: TickerDef): Promise<TickerResult> {
     quoteTime: iso(price_.regularMarketTime) ?? iso(meta.regularMarketTime),
     snapshot,
     ...(rating ? { techVotes: rating.votes } : {}),
-    profile: {
+    profile: !hasProfile && prev?.profile ? prev.profile : {
       description: (ap.longBusinessSummary as string) || "",
       website: (ap.website as string) || null,
       city: (ap.city as string) || null,
@@ -545,7 +575,8 @@ async function scrapeTicker(def: TickerDef): Promise<TickerResult> {
 
   console.log(
     `  ✓ ${def.t.padEnd(8)} ${String(price).padStart(9)}  daily ${String(d.length).padStart(4)}  1h ${String(h.length).padStart(4)}  15m ${String(m.length).padStart(4)}  ` +
-      `FY ${annual.length}  Q ${quarterly.length}  div ${dividends.length}  news ${stock.news.length}`,
+      `FY ${annual.length}  Q ${quarterly.length}  div ${dividends.length}  news ${stock.news.length}` +
+      (kept.length ? `  (kept previous: ${kept.join(", ")})` : ""),
   );
 
   const row = toIndexRow(stock, d);
@@ -557,6 +588,97 @@ async function scrapeTicker(def: TickerDef): Promise<TickerResult> {
       news: stock.news.length, statementsCurrency: stock.statementsCurrency ?? currency,
     },
   };
+}
+
+
+// ---------- indices ----------
+
+const OFFICIAL_INDICES = [
+  { id: "BET", sym: "^BET.RO", name: "Top 20 companii" },
+  { id: "BET-TR", sym: "^BET-TR.RO", name: "BET Total Return" },
+  { id: "BETPlus", sym: "^BETPLUS.RO", name: "Piața principală" },
+  { id: "BET-NG", sym: "^BET-NG.RO", name: "Energie și utilități" },
+  { id: "BET-FI", sym: "^BET-FI.RO", name: "Fonduri de investiții" },
+] as const;
+
+// Computed series say so in their name too (the strip also badges source "computed" as an estimate).
+const ALL_MARKET = { id: "Toată piața", name: "Calculat de BursaViz, nu e oficial" };
+const BET_COMPUTED = { id: "BET", name: "Aproximat din componente, nu e oficial" };
+
+function toSeries(id: string, name: string, source: IndexSeries["source"], d: Close[]): IndexSeries | null {
+  const p = perf(d);
+  return p ? { id, name, source, ...p, d } : null;
+}
+
+/** Two years back from `day` (YYYY-MM-DD). */
+const twoYearsBefore = (day: string) => `${Number(day.slice(0, 4)) - 2}${day.slice(4)}`;
+
+/**
+ * Official BVB indices from Yahoo (hourly bars → daily closes, merged with the history already in indices.json so
+ * it grows past Yahoo's ~730-day hourly limit) plus computed ones from bars/*.json: "Toată piața" always, and BET
+ * only if the official series is unavailable. `online: false` (reindex) makes no network calls and keeps the
+ * official series from disk. A failed fetch keeps the previous series; the file is never replaced by an empty one.
+ */
+async function writeIndices(online: boolean, rl: RateCounter): Promise<void> {
+  const file = path.join(OUT, "indices.json");
+  const old = await readJson<IndicesFile>(file);
+  const prevOf = (id: string, source: IndexSeries["source"]) => old?.indices?.find((x) => x.id === id && x.source === source);
+  const out: IndexSeries[] = [];
+
+  for (const ix of OFFICIAL_INDICES) {
+    const prev = prevOf(ix.id, "official");
+    let fresh: Close[] = [];
+    if (online && rl.hits === 0) {
+      const res: any = await soft(ix.sym, () => yf.chart(ix.sym, { period1: new Date(Date.now() - 729 * 864e5), interval: "1h" }, LOOSE), rl);
+      fresh = dailyFromHourly(res?.quotes ?? []);
+      // The last hourly close is the session close; Yahoo's regularMarketPrice is the same number, unrounded by bars.
+      const rmp = num(res?.meta?.regularMarketPrice);
+      const rmt = iso(res?.meta?.regularMarketTime);
+      if (fresh.length && rmp && rmt && dateFmt.format(new Date(rmt)) === fresh[fresh.length - 1][0]) fresh[fresh.length - 1][1] = rmp;
+      await sleep(400);
+    }
+    const d = mergeCloses(prev?.d ?? [], fresh);
+    const series = d.length >= 2 ? toSeries(ix.id, ix.name, "official", d) : null;
+    if (series) out.push(series);
+    console.log(
+      `  ${series ? "✓" : "✗"} ${ix.id.padEnd(8)} ${fresh.length ? `${fresh.length} sessions from Yahoo` : online ? "Yahoo: nothing" : "offline"}` +
+        (series ? `, ${d.length} stored, last ${series.last} (${d[d.length - 1][0]}), 1Y ${series.perfY == null ? "-" : (series.perfY * 100).toFixed(1) + "%"}` : ""),
+    );
+  }
+
+  // Computed indices from the stock files (market cap) and bars (daily closes) on disk.
+  const dir = path.join(OUT, "stocks");
+  const members: (Parameters<typeof capWeightedIndex>[0][number] & { bet: boolean })[] = [];
+  let lastDay = "";
+  for (const f of (await readdir(dir)).filter((x) => x.endsWith(".json")).sort()) {
+    const stock = await readJson<StockFile>(path.join(dir, f));
+    const bars = await readJson<BarsFile>(path.join(OUT, "bars", f));
+    const cap = num(stock?.snapshot?.marketCap);
+    if (!stock || !bars?.d?.length || !cap || cap <= 0) continue;
+    const closes = bars.d.map((b): Close => [b[0], b[4]]);
+    if (closes[closes.length - 1][0] > lastDay) lastDay = closes[closes.length - 1][0];
+    members.push({ ticker: stock.ticker, marketCap: cap, closes, bet: stock.index === "BET" });
+  }
+  if (members.length) {
+    const from = twoYearsBefore(lastDay);
+    const all = toSeries(ALL_MARKET.id, ALL_MARKET.name, "computed", capWeightedIndex(members, from));
+    if (all) out.push(all);
+    console.log(`  ${all ? "✓" : "✗"} ${ALL_MARKET.id} computed from ${members.length} stocks with a market cap, rebased to 1000 on ${from}+`);
+    if (!out.some((x) => x.id === "BET")) {
+      const bet = members.filter((m) => m.bet);
+      const series = toSeries(BET_COMPUTED.id, BET_COMPUTED.name, "computed", capWeightedIndex(bet, from));
+      if (series) out.unshift(series);
+      console.log(`  ${series ? "✓" : "✗"} BET computed from ${bet.length} constituents (official series unavailable)`);
+    }
+  }
+
+  if (!out.length) {
+    console.log("indices.json: nothing to write (existing file, if any, left untouched)");
+    return;
+  }
+  const indices: IndicesFile = { updatedAt: online ? new Date().toISOString() : (old?.updatedAt ?? new Date().toISOString()), indices: out };
+  await writeFile(file, JSON.stringify(indices));
+  console.log(`indices.json: ${out.map((x) => `${x.id} (${x.source})`).join(", ")}`);
 }
 
 // ---------- main ----------
@@ -582,11 +704,13 @@ function parseArgs(argv: string[]) {
   const tickers: string[] = [];
   let newsOnly = false;
   let reindex = false;
+  let indicesOnly = false;
   let freshHours: number | null = null;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--news-only") newsOnly = true;
     else if (a === "--reindex") reindex = true;
+    else if (a === "--indices-only") indicesOnly = true;
     else if (a === "--fresh" || a.startsWith("--fresh=")) {
       const v = a.includes("=") ? a.split("=")[1] : argv[++i];
       freshHours = Number(v);
@@ -599,12 +723,15 @@ function parseArgs(argv: string[]) {
       process.exit(1);
     } else tickers.push(a.toUpperCase());
   }
-  return { tickers, newsOnly, reindex, freshHours };
+  return { tickers, newsOnly, reindex, indicesOnly, freshHours };
 }
 
 async function writeMarketNews() {
   const items = await soft("market news", fetchMarketNews);
-  if (!items) return;
+  if (!items?.length) {
+    console.log("Market news: nothing fetched (existing market-news.json left untouched)");
+    return;
+  }
   const file: MarketNewsFile = { updatedAt: new Date().toISOString(), items };
   await writeFile(path.join(OUT, "market-news.json"), JSON.stringify(file));
   const direct = items.filter((n) => pubLinks.has(n.link)).length;
@@ -666,6 +793,8 @@ async function reindex() {
       continue;
     }
     const rating = techRating(bars.d);
+    applyDividendFields(stock.snapshot, stock.dividends, dateFmt.format(new Date(stock.updatedAt)));
+    for (const n of stock.news ?? []) n.source = cleanSource(n.source);
     stock.snapshot.techScore = rating ? r4(rating.score) : null;
     if (rating) {
       stock.techVotes = rating.votes;
@@ -681,12 +810,29 @@ async function reindex() {
   };
   await writeFile(path.join(OUT, "index.json"), JSON.stringify(out));
   console.log(`Reindexed ${rows.length} stocks (${rated} with a technical rating, ${rows.filter((r) => r.recom != null).length} with analyst coverage). No network calls.`);
+  const marketPath = path.join(OUT, "market-news.json");
+  const market = await readJson<MarketNewsFile>(marketPath);
+  if (market?.items?.length) {
+    for (const n of market.items) n.source = cleanSource(n.source);
+    await writeFile(marketPath, JSON.stringify(market));
+  }
+  await writeIndices(false, { hits: 0 });
   await writeDerived();
 }
 
 async function main() {
-  const { tickers: want, newsOnly, reindex: doReindex, freshHours } = parseArgs(process.argv.slice(2));
+  const { tickers: want, newsOnly, reindex: doReindex, indicesOnly, freshHours } = parseArgs(process.argv.slice(2));
   if (doReindex) return reindex();
+  if (indicesOnly) {
+    const rl: RateCounter = { hits: 0 };
+    console.log("Indices:");
+    await writeIndices(true, rl);
+    if (rl.hits) {
+      console.log("\nYahoo is rate-limiting this connection (429) — stopped.");
+      process.exitCode = EXIT.rateLimited;
+    }
+    return;
+  }
   const list = want.length ? TICKERS.filter((t) => want.includes(t.t)) : TICKERS;
   if (!list.length) {
     console.error(`No known tickers in: ${want.join(", ")}`);
@@ -709,7 +855,7 @@ async function main() {
       const stock = await readJson<StockFile>(file);
       if (!stock) continue;
       const news = await soft(`news ${def.t}`, () => fetchNews(def));
-      if (!news) continue;
+      if (!news?.length) continue; // a failed or empty fetch keeps the headlines on disk
       stock.news = news;
       await writeFile(file, JSON.stringify(stock));
       if (metaTickers[def.t]) metaTickers[def.t].news = news.length;
@@ -720,6 +866,7 @@ async function main() {
     const fmt = (m: Map<string, number>) => [...m].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(", ") || "none";
     console.log(`Direct items kept in market news: ${fmt(usedMarket)}`);
     console.log(`Direct items kept across ticker news: ${fmt(usedTicker)}`);
+    await writeDerived();
     return;
   }
 
@@ -735,7 +882,7 @@ async function main() {
   const fx = await fetchFx(fxRl);
   if (fxRl.hits > 0) {
     console.log("\nYahoo is rate-limiting this connection (429 on FX) — stopping. Run again later.");
-    process.exit(2);
+    process.exit(EXIT.rateLimited);
   }
   if (fx) {
     await writeFile(path.join(OUT, "fx.json"), JSON.stringify(fx));
@@ -749,6 +896,8 @@ async function main() {
 
   const skipped: string[] = [];
   let rateLimitedTickers = 0;
+  let attempted = 0;
+  let refreshed = 0;
   let stop = false;
   let next = 0;
 
@@ -763,11 +912,13 @@ async function main() {
           continue;
         }
       }
+      attempted++;
       const res = await scrapeTicker(def).catch((e): TickerResult => {
         console.log(`  ✗ ${def.t}: ${String(e?.message ?? e).slice(0, 160)}`);
         return { row: null, rateLimited: false };
       });
       if (res.row) {
+        refreshed++;
         rows.set(res.row.ticker, res.row);
         if (res.meta) metaTickers[def.t] = res.meta;
       } else skipped.push(def.t);
@@ -787,8 +938,20 @@ async function main() {
   await writeFile(indexPath, JSON.stringify(out));
   const meta: MetaFile = { updatedAt: out.updatedAt, tickers: metaTickers, skipped };
   await writeFile(metaPath, JSON.stringify(meta));
+
+  // Indices only when Yahoo is still answering: computed ones are rebuilt from the bars on disk either way.
+  const ixRl: RateCounter = { hits: 0 };
+  console.log("\nIndices:");
+  await writeIndices(rateLimitedTickers === 0, ixRl);
   await writeDerived();
-  console.log(`\nDone: ${out.rows.length} tickers in index.json` + (skipped.length ? `, skipped: ${skipped.join(", ")}` : ""));
+  console.log(`\nDone: ${refreshed}/${attempted} tickers refreshed, ${out.rows.length} in index.json` + (skipped.length ? `, not refreshed: ${skipped.join(", ")}` : ""));
+
+  const { code, why } = runExit({ rateLimited: rateLimitedTickers > 0 || ixRl.hits > 0, fxOk: fx != null, attempted, refreshed });
+  console.log(`Exit ${code}: ${why}`);
+  process.exitCode = code;
 }
 
-main();
+main().catch((e) => {
+  console.error("Scraper crashed:", e);
+  process.exit(EXIT.crash);
+});

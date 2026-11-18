@@ -1,0 +1,106 @@
+/* Sector peers table on the stock page (PeersTable). Theme variables from src/styles.css. */
+
+.pt .panel-head h2 small {
+  font-size: 13px;
+}
+.pt-cmp {
+  font-weight: 700;
+  white-space: nowrap;
+}
+.pt-scroll {
+  overflow-x: auto;
+  border-top: 1px solid var(--line-soft);
+}
+.pt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.pt-table th,
+.pt-table td {
+  padding: 4px 10px;
+  white-space: nowrap;
+  text-align: left;
+  border-bottom: 1px solid var(--line-soft);
+}
+.pt-table thead th {
+  background: var(--bg-deep);
+  color: var(--text-soft);
+  font-weight: 700;
+}
+.pt-table tbody th {
+  font-weight: 700;
+}
+.pt-table .co {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-soft);
+}
+.pt-table tbody tr {
+  cursor: pointer;
+}
+.pt-table tbody tr:hover {
+  background: var(--row-hover);
+}
+.pt-table tbody tr.pt-self {
+  cursor: default;
+  background: color-mix(in srgb, var(--blue) 14%, var(--bg));
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+.pt-table tbody tr.pt-self th {
+  color: var(--text-strong);
+}
+.pt-median th,
+.pt-median td {
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+  background: var(--bg-deep);
+  color: var(--muted);
+  font-weight: 700;
+}
+.pt-median td.pos {
+  color: var(--green);
+}
+.pt-median td.neg {
+  color: var(--red);
+}
+
+@media (max-width: 760px) {
+  .pt .panel-head {
+    padding: 10px;
+  }
+  .pt-cmp {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+  }
+  .pt-table th,
+  .pt-table td {
+    padding: 9px 8px;
+  }
+  .pt-table .co {
+    max-width: 130px;
+  }
+  /* keep the ticker in view while the row scrolls */
+  .pt-table tbody th,
+  .pt-table thead th:nth-child(2),
+  .pt-median th {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--bg);
+  }
+  .pt-table thead th:nth-child(2),
+  .pt-median th {
+    background: var(--bg-deep);
+  }
+  .pt-table tbody tr.pt-self th {
+    background: color-mix(in srgb, var(--blue) 14%, var(--bg));
+  }
+  .pt-table td.num.dim:first-child,
+  .pt-table thead th:first-child,
+  .pt-median td:first-child {
+    display: none;
+  }
+}

@@ -1,0 +1,93 @@
+# Refreshes public/data/ from Yahoo Finance and the news feeds every weekday after the BVB close, commits the
+# data only if the run was healthy and something changed, and redeploys the site.
+#
+# Schedule: BVB trading ends 17:45 Bucharest time; 16:30 UTC is 18:30 in winter (EET, UTC+2) and 19:30 in summer
+# (EEST, UTC+3), so it is after the close all year. GitHub may start scheduled runs some minutes late.
+#
+# Health: the scraper exits non-zero when Yahoo rate-limits (2), FX fails (3) or fewer than 80% of the tickers
+# refresh (4); a failed ticker keeps its previous files. Any non-zero exit fails this job before the commit step,
+# so partial or empty data is never committed (e.g. when Yahoo refuses GitHub's datacentre addresses).
+name: Refresh data
+
+on:
+  schedule:
+    - cron: "30 16 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          # Native TypeScript stripping (the scripts run as .ts); same major as local development.
+          node-version: 26
+          cache: npm
+      - run: npm ci
+
+      - name: Scrape
+        run: node scripts/scrape.ts
+
+      - name: Check the data before committing
+        run: |
+          node --input-type=module -e '
+            import { readFileSync, readdirSync } from "node:fs";
+            import { execSync } from "node:child_process";
+            const dir = "public/data";
+            const files = [
+              ...readdirSync(dir).filter((f) => f.endsWith(".json")).map((f) => `${dir}/${f}`),
+              ...readdirSync(`${dir}/stocks`).map((f) => `${dir}/stocks/${f}`),
+              ...readdirSync(`${dir}/bars`).map((f) => `${dir}/bars/${f}`),
+            ];
+            for (const f of files) JSON.parse(readFileSync(f, "utf8")); // throws on a truncated file
+            const rows = JSON.parse(readFileSync(`${dir}/index.json`, "utf8")).rows.length;
+            const before = JSON.parse(execSync(`git show HEAD:${dir}/index.json`, { encoding: "utf8" })).rows.length;
+            console.log(`${files.length} JSON files parse; index.json rows ${before} -> ${rows}`);
+            if (rows < Math.floor(before * 0.9)) { console.error("index.json lost rows; not committing"); process.exit(1); }
+          '
+
+      - run: npm test
+
+      - name: Commit and push public/data
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/data
+          if git diff --cached --quiet; then
+            echo "No data changes."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git commit -m "Data refresh $(TZ=Europe/Bucharest date +%Y-%m-%d)"
+          git pull --rebase origin "main"
+          git push origin "HEAD:main"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: scrape
+    if: needs.scrape.outputs.changed == 'true'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml
+    with:
+      ref: ${{ needs.scrape.outputs.sha }}

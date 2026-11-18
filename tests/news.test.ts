@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dedupeNews, isMarketRelevant, isRelevant, normalizeTitle, parseRss, tagTickers } from "../scripts/lib/news.ts";
+import { cleanSource, dedupeNews, isMarketRelevant, isRelevant, normalizeTitle, parseRss, tagTickers } from "../scripts/lib/news.ts";
 import type { NewsItem } from "../src/lib/types.ts";
 
 test("normalizeTitle", () => {
@@ -88,4 +88,22 @@ test("parseRss handles direct publication feeds (CDATA, dc:date, no date, no sou
   assert.equal(items[1].date, "2026-11-16T12:00:00.000Z");
   assert.equal(items[2].title, "Dată în pubDate și hex");
   assert.equal(items[2].link, "https://pub.example/c");
+});
+
+test("cleanSource turns URL-shaped sources into one bare host and keeps real names", () => {
+  for (const raw of ["https://www.goldring.ro/ro", "www.goldring.ro", "goldring.ro", "http://goldring.ro/", "WWW.Goldring.ro"]) {
+    assert.equal(cleanSource(raw), "goldring.ro", raw);
+  }
+  assert.equal(cleanSource("https://www.smark.ro/"), "smark.ro");
+  assert.equal(cleanSource(": Europa FM"), "Europa FM");
+  assert.equal(cleanSource("  Ziarul   Financiar "), "Ziarul Financiar");
+  for (const name of ["Profit.ro", "Economica.net", "Realitatea.NET", "PRO TV.ro", "Mold-street.com"]) assert.equal(cleanSource(name), name);
+});
+
+test("parseRss cleans the source and still strips it from the title suffix", () => {
+  const xml = `<rss><channel><item><title>BET urcă - https://www.goldring.ro/ro</title><link>https://x/1</link>
+    <pubDate>Mon, 16 Nov 2026 10:00:00 GMT</pubDate><source url="https://www.goldring.ro">https://www.goldring.ro/ro</source></item></channel></rss>`;
+  const [item] = parseRss(xml);
+  assert.equal(item.source, "goldring.ro");
+  assert.equal(item.title, "BET urcă");
 });

@@ -21,7 +21,8 @@ export const compareHref = (tickers: string[]) => `#/compare?t=${tickers.join(",
 
 /** Replace the query of a sub-page's hash (e.g. the compare list) without adding a history entry. */
 export function writePageQuery(page: PageId, params: URLSearchParams) {
-  const q = params.toString();
+  // Commas are safe in a hash and keep ticker lists readable: #/compare?t=TLV,SNP rather than TLV%2CSNP.
+  const q = params.toString().replace(/%2C/gi, ",");
   window.history.replaceState(null, "", `#/${page}${q ? `?${q}` : ""}`);
 }
 

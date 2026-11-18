@@ -35,7 +35,10 @@ export function fmtPct(x: N, digits = 2): string {
 }
 
 export function fmtSignedPct(x: N, digits = 2): string {
-  return ok(x) ? (x > 0 ? "+" : "") + fmtNum(x * 100, digits) + "%" : DASH;
+  if (!ok(x)) return DASH;
+  // A change that rounds to zero is shown as plain 0.0%, never "-0.0%" or "+0.0%".
+  const r = Number((x * 100).toFixed(digits));
+  return r === 0 ? fmtNum(0, digits) + "%" : (r > 0 ? "+" : "") + fmtNum(r, digits) + "%";
 }
 
 export function signClass(x: N): string {

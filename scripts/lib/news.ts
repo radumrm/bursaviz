@@ -42,6 +42,20 @@ export function dedupeNews(items: NewsItem[]): NewsItem[] {
   return [...seen.values()].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 }
 
+/**
+ * Display name for a news source. Google News sometimes gives a site's URL or bare host instead of its name
+ * ("https://www.goldring.ro/ro", "www.goldring.ro"): drop the scheme, a leading "www." and any path, so every
+ * form of the same site reads "goldring.ro". Real names ("Ziarul Financiar", "Profit.ro") are only trimmed of
+ * stray punctuation and whitespace.
+ */
+export function cleanSource(source: string): string {
+  let s = source.replace(/\s+/g, " ").trim();
+  const url = /^(?:[a-z][a-z0-9+.-]*:\/\/)?(?:www\.)?([^\s/?#]+\.[a-z]{2,})(?:[/?#]\S*)?$/i.exec(s);
+  if (url && (/^[a-z][a-z0-9+.-]*:\/\//i.test(s) || /^www\./i.test(s) || /[/?#]/.test(s))) return url[1].toLowerCase();
+  s = s.replace(/^[^\p{L}\p{N}]+/u, "").replace(/[\s:;,|–—-]+$/u, "").trim();
+  return s;
+}
+
 export interface ParseOptions {
   /** Source for items that carry no <source> element (direct publication feeds). */
   source?: string;
@@ -57,9 +71,15 @@ export function parseRss(xml: string, opts: ParseOptions = {}): NewsItem[] {
   const items: NewsItem[] = [];
   for (const m of xml.matchAll(/<item(?:\s[^>]*)?>(.*?)<\/item>/gs)) {
     const pick = (tag: string) => new RegExp(`<${tag}(?:\\s[^>]*)?>(.*?)</${tag}>`, "s").exec(m[1])?.[1] ?? "";
-    const source = unescapeXml(pick("source")) || opts.source || "";
+    const rawSource = unescapeXml(pick("source")).replace(/\s+/g, " ") || opts.source || "";
+    const source = cleanSource(rawSource);
     let title = unescapeXml(pick("title")).replace(/\s+/g, " ");
-    if (source && title.endsWith(` - ${source}`)) title = title.slice(0, -(source.length + 3));
+    for (const suffix of new Set([rawSource, source])) {
+      if (suffix && title.endsWith(` - ${suffix}`)) {
+        title = title.slice(0, -(suffix.length + 3));
+        break;
+      }
+    }
     const raw = unescapeXml(pick("pubDate")) || unescapeXml(pick("dc:date"));
     const d = raw ? new Date(raw) : null;
     const date = d && !Number.isNaN(d.getTime()) ? d.toISOString() : (opts.fallbackDate ?? null);

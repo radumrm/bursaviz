@@ -323,3 +323,61 @@ export function techRating(d: DailyBar[]): TechRating | null {
   const score = votes.reduce((s, v) => s + v.vote, 0) / votes.length;
   return { score, label: techLabel(score) as RatingLabel, votes };
 }
+
+/**
+ * Slow Stochastic oscillator. Raw %K = 100 × (close − lowest low) ÷ (highest high − lowest low) over `period`
+ * bars; %K is its `kSmooth`-bar mean, %D the `dPeriod`-bar mean of %K. Null until enough bars exist and
+ * wherever the window has no range (high == low throughout).
+ */
+export function stochastic(
+  high: number[],
+  low: number[],
+  close: number[],
+  period = 14,
+  kSmooth = 3,
+  dPeriod = 3,
+): { k: (number | null)[]; d: (number | null)[] } {
+  const n = close.length;
+  const raw: (number | null)[] = new Array(n).fill(null);
+  for (let i = period - 1; i < n; i++) {
+    let hh = -Infinity;
+    let ll = Infinity;
+    for (let j = i - period + 1; j <= i; j++) {
+      if (high[j] > hh) hh = high[j];
+      if (low[j] < ll) ll = low[j];
+    }
+    raw[i] = hh > ll ? (100 * (close[i] - ll)) / (hh - ll) : null;
+  }
+  const smooth = (xs: (number | null)[], p: number): (number | null)[] => {
+    const out: (number | null)[] = new Array(n).fill(null);
+    if (p < 1) return out;
+    for (let i = p - 1; i < n; i++) {
+      let s = 0;
+      let ok = true;
+      for (let j = i - p + 1; j <= i; j++) {
+        const v = xs[j];
+        if (v == null) { ok = false; break; }
+        s += v;
+      }
+      if (ok) out[i] = s / p;
+    }
+    return out;
+  };
+  const k = smooth(raw, kSmooth);
+  return { k, d: smooth(k, dPeriod) };
+}
+
+/** On-Balance Volume: running total of volume, added on up closes and subtracted on down closes; starts at 0. */
+export function obv(close: number[], volume: number[]): number[] {
+  const out: number[] = [];
+  let total = 0;
+  for (let i = 0; i < close.length; i++) {
+    if (i > 0) {
+      const v = Number.isFinite(volume[i]) ? volume[i] : 0;
+      if (close[i] > close[i - 1]) total += v;
+      else if (close[i] < close[i - 1]) total -= v;
+    }
+    out.push(total);
+  }
+  return out;
+}

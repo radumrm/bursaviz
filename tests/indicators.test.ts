@@ -99,3 +99,82 @@ test("label thresholds", () => {
   assert.equal(techLabel(-0.15), "Sell");
   assert.equal(techLabel(-0.5), "Strong Sell");
 });
+
+// ---------- v3: Stochastic, OBV, ATR pane ----------
+
+import { atr, obv, stochastic } from "../src/lib/indicators.ts";
+
+test("stochastic: raw %K is the close's position in the high-low range of the window", () => {
+  const high = [10, 12, 14, 13, 15];
+  const low = [8, 9, 11, 10, 12];
+  const cl = [9, 11, 13, 11, 14];
+  // window 3, no smoothing of %K, %D = 2-bar average of %K
+  const s = stochastic(high, low, cl, 3, 1, 2);
+  assert.deepEqual(s.k.slice(0, 2), [null, null]);
+  close(s.k[2], (100 * (13 - 8)) / (14 - 8)); // 83.33
+  close(s.k[3], (100 * (11 - 9)) / (14 - 9)); // 40
+  close(s.k[4], (100 * (14 - 10)) / (15 - 10)); // 80
+  assert.deepEqual(s.d.slice(0, 3), [null, null, null]);
+  close(s.d[3], (500 / 6 + 40) / 2);
+  close(s.d[4], 60);
+});
+
+test("stochastic (14, 3, 3): %K starts at bar 15, %D at bar 17, both stay within 0..100", () => {
+  const n = 60;
+  const cl = Array.from({ length: n }, (_, i) => 20 + 5 * Math.sin(i / 4) + i * 0.05);
+  const high = cl.map((c) => c + 0.6);
+  const low = cl.map((c) => c - 0.4);
+  const s = stochastic(high, low, cl);
+  assert.equal(s.k.length, n);
+  assert.equal(s.d.length, n);
+  for (let i = 0; i < 15; i++) assert.equal(s.k[i], null);
+  for (let i = 0; i < 17; i++) assert.equal(s.d[i], null);
+  for (let i = 17; i < n; i++) {
+    const k = s.k[i] as number;
+    const d = s.d[i] as number;
+    assert.ok(k >= 0 && k <= 100, `%K ${k}`);
+    assert.ok(d >= 0 && d <= 100, `%D ${d}`);
+  }
+  // slow %K is the 3-bar mean of the raw value
+  const raw = (i: number) => {
+    const hh = Math.max(...high.slice(i - 13, i + 1));
+    const ll = Math.min(...low.slice(i - 13, i + 1));
+    return (100 * (cl[i] - ll)) / (hh - ll);
+  };
+  close(s.k[30], (raw(28) + raw(29) + raw(30)) / 3);
+  close(s.d[30], ((s.k[28] as number) + (s.k[29] as number) + (s.k[30] as number)) / 3);
+});
+
+test("stochastic: too few bars → nulls, no throw; a flat window has no reading", () => {
+  const few = stochastic([1, 2, 3], [1, 2, 3], [1, 2, 3]);
+  assert.deepEqual(few.k, [null, null, null]);
+  assert.deepEqual(few.d, [null, null, null]);
+  assert.deepEqual(stochastic([], [], []), { k: [], d: [] });
+  // 20 identical bars: high == low over every window, so the position in the range is undefined
+  const flat = new Array(20).fill(5);
+  const s = stochastic(flat, flat, flat);
+  assert.ok(s.k.every((v) => v === null));
+  assert.ok(s.d.every((v) => v === null));
+});
+
+test("obv adds the volume on up closes, subtracts it on down closes, ignores unchanged ones", () => {
+  assert.deepEqual(obv([10, 11, 10.5, 10.5, 12], [100, 200, 50, 70, 30]), [0, 200, 150, 150, 180]);
+});
+
+test("obv: no bars → empty, one bar → 0, bad volumes count as 0", () => {
+  assert.deepEqual(obv([], []), []);
+  assert.deepEqual(obv([5], [1000]), [0]);
+  assert.deepEqual(obv([1, 2, 3], [10, NaN, 5]), [0, 0, 5]);
+});
+
+test("atr (the ATR 14 pane): too few bars → nulls, no throw", () => {
+  const few = atr([2, 3], [1, 2], [1.5, 2.5]);
+  assert.deepEqual(few, [null, null]);
+  assert.deepEqual(atr([], [], []), []);
+  // constant 1-wide bars with no gaps: true range is always 1
+  const n = 30;
+  const a = atr(new Array(n).fill(11), new Array(n).fill(10), new Array(n).fill(10.5));
+  for (let i = 0; i < 14; i++) assert.equal(a[i], null);
+  close(a[14], 1);
+  close(a[n - 1], 1);
+});
